@@ -30,8 +30,8 @@ test('innnvoice.html fills, previews and downloads a PDF', { skip: !installed &&
 	browser('set', 'viewport', '1400', '900');
 	browser('wait', '500');
 
-	let state = evaluate("{ balance: document.querySelector('#balance').textContent, error: document.querySelector('#error').textContent, iframe: document.querySelector('#preview').src.startsWith('blob:') }");
-	assert.deepEqual(state, { balance: 'Balance USD 0.00', error: '', iframe: true });
+	let state = evaluate("{ balance: document.querySelector('#balance').textContent, error: document.querySelector('#error').textContent, preview: [...document.querySelectorAll('#preview svg text')].some(t => t.textContent === 'Acme Payment') }");
+	assert.deepEqual(state, { balance: 'Balance USD 0.00', error: '', preview: true });
 
 	browser('click', 'label[for=s-due]');
 	browser('fill', '[data-field=paid]', '1200');

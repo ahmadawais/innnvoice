@@ -26,5 +26,5 @@ test('the embedded sample is innnvoice.json', () => {
 test('the page script parses and loads nothing external', () => {
 	const script = /<script>([\s\S]*)<\/script>/.exec(html)[1];
 	assert.doesNotThrow(() => new Function(script));
-	assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href=|@import|https?:\/\/(?!www\.w3\.org)/);
+	assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href=|@import|https?:\/\/(?!www\.w3\.org\/2000\/svg)/);
 });

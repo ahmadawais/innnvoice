@@ -423,7 +423,18 @@ function renderInvoice(tpl, opts = {}) {
 	let output = fill(tpl.output ?? 'invoice-{year}-{MM}.pdf');
 	if (status === 'draft') output = output.replace(/(\.pdf)?$/i, '-DRAFT.pdf');
 
-	return { pdf, output, invoiceNo, status, currency, date: fmtDate(date), balance: money(balance), warnings };
+	return {
+		pdf,
+		content: ops.join('\n'),
+		page: [PAGE_W, PAGE_H],
+		output,
+		invoiceNo,
+		status,
+		currency,
+		date: fmtDate(date),
+		balance: money(balance),
+		warnings,
+	};
 }
 
 // </core>

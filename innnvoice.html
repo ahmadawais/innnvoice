@@ -6,27 +6,63 @@
 <title>innnvoice</title>
 <meta name="description" content="Fill in an invoice and download it as a PDF. Works offline, nothing leaves your browser.">
 <style>
+	/*
+	 * Proportions follow the golden ratio (φ ≈ 1.618):
+	 * - layout splits 38.2% form / 61.8% preview
+	 * - spacing steps through Fibonacci numbers (5 8 13 21 34 55)
+	 * - type scales by √φ ≈ 1.272 from a 14px base (11 · 14 · 17.8 · 22.6)
+	 */
 	:root {
-		--bg: #f4f4f5;
+		--phi: 1.618;
+		--s1: 5px;
+		--s2: 8px;
+		--s3: 13px;
+		--s4: 21px;
+		--s5: 34px;
+		--s6: 55px;
+		--t-xs: 11px;
+		--t-sm: 12.5px;
+		--t-md: 14px;
+		--t-lg: 17.8px;
+		--t-xl: 22.6px;
+		--r-sm: 8px;
+		--r-md: 13px;
+		--control: 34px;
+
+		--bg: #f5f5f3;
+		--canvas: #ebebe8;
 		--panel: #ffffff;
-		--ink: #27272a;
+		--ink: #18181b;
+		--ink-2: #3f3f46;
 		--muted: #71717a;
-		--line: #e4e4e7;
-		--field: #fafafa;
+		--faint: #a1a1aa;
+		--line: #e7e7e4;
+		--line-strong: #d4d4d0;
+		--field: #fafaf9;
+		--field-hover: #f4f4f2;
 		--accent: #5a9f7d;
 		--accent-ink: #ffffff;
 		--danger: #d35c5c;
-		--radius: 8px;
+		--ring: color-mix(in srgb, var(--accent) 35%, transparent);
+		--shadow-paper: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 21px rgb(0 0 0 / 0.08), 0 34px 55px -21px rgb(0 0 0 / 0.18);
+		--shadow-pop: 0 1px 2px rgb(0 0 0 / 0.06), 0 5px 13px rgb(0 0 0 / 0.06);
 		color-scheme: light;
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
-			--bg: #09090b;
-			--panel: #18181b;
+			--bg: #0c0c0e;
+			--canvas: #08080a;
+			--panel: #141417;
 			--ink: #f4f4f5;
+			--ink-2: #d4d4d8;
 			--muted: #a1a1aa;
-			--line: #27272a;
-			--field: #0f0f11;
+			--faint: #71717a;
+			--line: #232328;
+			--line-strong: #2f2f35;
+			--field: #0f0f12;
+			--field-hover: #18181c;
+			--shadow-paper: 0 1px 2px rgb(0 0 0 / 0.4), 0 13px 34px rgb(0 0 0 / 0.45), 0 55px 89px -34px rgb(0 0 0 / 0.6);
+			--shadow-pop: 0 1px 2px rgb(0 0 0 / 0.4), 0 5px 13px rgb(0 0 0 / 0.3);
 			color-scheme: dark;
 		}
 	}
@@ -36,124 +72,279 @@
 	body {
 		background: var(--bg);
 		color: var(--ink);
-		font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+		font: var(--t-md) / var(--phi) -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+		-webkit-font-smoothing: antialiased;
+		font-feature-settings: 'cv11', 'ss01';
 		display: grid;
-		grid-template-columns: minmax(360px, 480px) 1fr;
-		grid-template-rows: auto 1fr;
+		grid-template-columns: minmax(380px, 38.2fr) minmax(0, 61.8fr);
+		grid-template-rows: auto minmax(0, 1fr);
 		grid-template-areas: 'bar bar' 'form preview';
 	}
+	::selection { background: var(--ring); }
+
+	/* ─── Top bar ─────────────────────────────────────────────────────────── */
 
 	header {
 		grid-area: bar;
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 12px 16px;
-		background: var(--panel);
+		gap: var(--s3);
+		padding: var(--s3) var(--s4);
+		background: color-mix(in srgb, var(--panel) 85%, transparent);
+		backdrop-filter: saturate(1.6) blur(13px);
 		border-bottom: 1px solid var(--line);
 		position: sticky;
 		top: 0;
-		z-index: 2;
+		z-index: 3;
 	}
-	header h1 { font-size: 16px; margin: 0; letter-spacing: -0.01em; }
-	header .balance { margin-left: auto; color: var(--muted); white-space: nowrap; }
-	header .balance b { color: var(--ink); }
+	.brand { display: flex; align-items: center; gap: var(--s2); margin-right: auto; text-decoration: none; color: inherit; }
+	.brand-mark {
+		width: var(--control);
+		height: var(--control);
+		border-radius: var(--r-sm);
+		background: var(--badge, var(--accent));
+		display: grid;
+		place-items: center;
+		color: #fff;
+		box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.12);
+		transition: background 0.3s ease;
+	}
+	.brand-mark svg { width: 18px; height: 18px; }
+	.brand h1 { font-size: var(--t-lg); line-height: 1; margin: 0; letter-spacing: -0.02em; font-weight: 650; }
+	.brand p { margin: 3px 0 0; font-size: var(--t-xs); color: var(--muted); line-height: 1; }
 
+	.balance {
+		display: flex;
+		align-items: baseline;
+		gap: var(--s2);
+		padding: 0 var(--s3);
+		height: var(--control);
+		align-items: center;
+		border-radius: var(--r-sm);
+		background: var(--field);
+		border: 1px solid var(--line);
+		font-size: var(--t-sm);
+		color: var(--muted);
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+	.balance b { color: var(--ink); font-size: var(--t-md); font-weight: 650; letter-spacing: -0.01em; }
+
+	.actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
 	button, .button {
 		font: inherit;
-		border: 1px solid var(--line);
+		font-size: var(--t-sm);
+		font-weight: 550;
+		height: var(--control);
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 1px solid var(--line-strong);
 		background: var(--panel);
-		color: var(--ink);
-		padding: 7px 12px;
-		border-radius: var(--radius);
+		color: var(--ink-2);
+		padding: 0 var(--s3);
+		border-radius: var(--r-sm);
 		cursor: pointer;
 		white-space: nowrap;
+		box-shadow: 0 1px 1px rgb(0 0 0 / 0.04);
+		transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 	}
-	button:hover, .button:hover { border-color: var(--muted); }
-	button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-	button.primary:hover { filter: brightness(1.05); }
-	button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
-	button.ghost:hover { color: var(--danger); }
-	.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+	button svg, .button svg { width: 15px; height: 15px; flex: none; }
+	button:hover, .button:hover { background: var(--field-hover); border-color: var(--faint); color: var(--ink); }
+	button:active, .button:active { transform: translateY(1px); }
+	button:focus-visible, .button:focus-within { outline: 3px solid var(--ring); outline-offset: 1px; }
+	button.primary {
+		background: var(--ink);
+		border-color: var(--ink);
+		color: var(--bg);
+		box-shadow: var(--shadow-pop);
+	}
+	button.primary:hover { background: var(--ink-2); border-color: var(--ink-2); color: var(--bg); }
+	button.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--muted); }
+	button.ghost:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+
+	/* ─── Form ────────────────────────────────────────────────────────────── */
 
 	form {
 		grid-area: form;
 		overflow-y: auto;
-		padding: 16px;
+		padding: var(--s4);
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
-		border-right: 1px solid var(--line);
-		background: var(--panel);
+		gap: var(--s3);
+		background: var(--bg);
+		scrollbar-width: thin;
 	}
-	fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
-	legend { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
-	.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-	label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-	label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+	fieldset {
+		border: 1px solid var(--line);
+		background: var(--panel);
+		border-radius: var(--r-md);
+		margin: 0;
+		padding: var(--s4);
+		display: grid;
+		gap: var(--s3);
+		min-width: 0;
+	}
+	legend {
+		float: left;
+		width: 100%;
+		padding: 0;
+		margin: 0;
+		font-size: var(--t-xs);
+		font-weight: 650;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--faint);
+	}
+	legend + * { clear: both; }
+	.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
+	.row.golden { grid-template-columns: minmax(0, 61.8fr) minmax(0, 38.2fr); }
+	label { display: grid; gap: var(--s1); font-size: var(--t-xs); font-weight: 550; color: var(--muted); }
+	label.check { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-sm); font-weight: 500; color: var(--ink-2); cursor: pointer; }
 	input, textarea, select {
 		font: inherit;
-		font-size: 14px;
+		font-size: var(--t-md);
+		font-weight: 400;
+		line-height: 1.45;
 		color: var(--ink);
 		background: var(--field);
 		border: 1px solid var(--line);
-		border-radius: 6px;
-		padding: 7px 9px;
+		border-radius: var(--r-sm);
+		padding: 0 var(--s3);
+		height: var(--control);
 		width: 100%;
 		min-width: 0;
+		transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 	}
-	input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
-	textarea { resize: vertical; min-height: 64px; }
-	input[type='checkbox'] { width: auto; accent-color: var(--accent); }
-	input[type='color'] { padding: 2px; height: 34px; }
-	hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
-	.hint { font-size: 12px; color: var(--muted); margin: 0; }
-	code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+	textarea { height: auto; padding: 7px var(--s3); resize: vertical; min-height: calc(var(--control) * var(--phi)); }
+	input:hover, textarea:hover { border-color: var(--line-strong); }
+	input:focus, textarea:focus { outline: none; border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px var(--ring); }
+	input[type='number'] { font-variant-numeric: tabular-nums; text-align: right; }
+	input[type='checkbox'] { width: 16px; height: 16px; padding: 0; accent-color: var(--accent); }
+	input[type='color'] { padding: 3px; cursor: pointer; }
+	input::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
+	.hint { font-size: var(--t-xs); font-weight: 400; color: var(--faint); margin: 0; }
+	code { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 4px; border-radius: 4px; background: var(--field-hover); color: var(--ink-2); }
 
-	.status { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+	/* Status: segmented control tinted with the badge color. */
+	.status { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 3px; border-radius: var(--r-sm); background: var(--field-hover); border: 1px solid var(--line); }
 	.status input { position: absolute; inset: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-	.status label { text-align: center; padding: 7px 0; font-size: 13px; color: var(--ink); cursor: pointer; border-left: 1px solid var(--line); display: block; }
-	.status label:first-of-type { border-left: 0; }
-	.status input:checked + label { background: var(--badge, var(--accent)); color: #fff; font-weight: 600; }
-	.status input:focus-visible + label { outline: 2px solid var(--ink); outline-offset: -3px; }
+	.status label {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		height: 28px;
+		font-size: var(--t-sm);
+		font-weight: 550;
+		color: var(--muted);
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+	}
+	.status label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+	.status label:hover { color: var(--ink); }
+	.status input:checked + label { background: var(--badge, var(--accent)); color: #fff; box-shadow: var(--shadow-pop); }
+	.status input:checked + label::before { opacity: 1; background: #fff; }
+	.status input:focus-visible + label { outline: 3px solid var(--ring); }
 
-	.items { display: grid; gap: 8px; }
-	.item { display: grid; grid-template-columns: minmax(0, 1fr) 64px 92px 32px; gap: 6px; align-items: start; }
-	.item textarea { min-height: 36px; }
-	.item .amount { grid-column: 1 / -1; font-size: 12px; color: var(--muted); text-align: right; margin-top: -4px; }
-	.item-head { display: grid; grid-template-columns: minmax(0, 1fr) 64px 92px 32px; gap: 6px; font-size: 12px; color: var(--muted); }
+	/* Line items */
+	.items { display: grid; gap: var(--s2); counter-reset: item; }
+	.item-head, .item { display: grid; grid-template-columns: minmax(0, 1fr) 55px 89px var(--control); gap: var(--s2); }
+	.item-head { font-size: var(--t-xs); font-weight: 550; color: var(--muted); }
+	.item-head span:nth-child(2), .item-head span:nth-child(3) { text-align: right; padding-right: var(--s3); }
+	.item { align-items: start; padding-bottom: var(--s2); border-bottom: 1px dashed var(--line); }
+	.item textarea { min-height: var(--control); height: var(--control); padding-top: 6px; }
+	.item button[data-remove] { width: var(--control); padding: 0; justify-content: center; font-size: 13px; }
+	.item .amount { grid-column: 1 / -1; font-size: var(--t-xs); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; padding-right: calc(var(--control) + var(--s2)); }
+	#add-item { justify-content: center; border-style: dashed; background: transparent; box-shadow: none; color: var(--muted); }
+	#add-item:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 
-	main { grid-area: preview; position: relative; min-height: 0; }
-	main iframe { border: 0; width: 100%; height: 100%; display: block; background: var(--bg); }
+	.privacy { display: flex; align-items: center; gap: var(--s2); justify-content: center; font-size: var(--t-xs); color: var(--faint); padding: var(--s2) 0 var(--s4); }
+	.privacy svg { width: 13px; height: 13px; }
+
+	/* ─── Preview: the PDF as a sheet of A4 paper ─────────────────────────── */
+
+	main {
+		grid-area: preview;
+		position: relative;
+		min-height: 0;
+		display: grid;
+		place-items: center;
+		padding: var(--s5);
+		background:
+			radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 0) 0 0 / 21px 21px,
+			var(--canvas);
+		border-left: 1px solid var(--line);
+		overflow: hidden;
+	}
+	.paper {
+		height: 100%;
+		max-width: 100%;
+		aspect-ratio: 1 / 1.4142;
+		border-radius: 3px;
+		overflow: hidden;
+		background: #fff;
+		box-shadow: var(--shadow-paper);
+		animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+	@supports not (aspect-ratio: 1) { .paper { width: 100%; } }
+	.paper svg { display: block; width: 100%; height: 100%; }
 	.error {
 		position: absolute;
-		inset: 16px 16px auto 16px;
+		inset: var(--s4) var(--s4) auto var(--s4);
 		background: var(--danger);
 		color: #fff;
-		padding: 10px 14px;
-		border-radius: var(--radius);
+		padding: var(--s3) var(--s4);
+		border-radius: var(--r-sm);
+		box-shadow: var(--shadow-pop);
+		font-weight: 500;
 		display: none;
 	}
-	.error.show { display: block; }
+	.error.show { display: block; animation: rise 0.3s ease; }
+	@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+	@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
-	@media (max-width: 860px) {
-		body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 80vh; grid-template-areas: 'bar' 'form' 'preview'; height: auto; }
-		form { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
-		header { flex-wrap: wrap; }
-		header .balance { order: 3; width: 100%; margin-left: 0; }
+	/* ─── Small screens: stack, preview last ──────────────────────────────── */
+
+	@media (max-width: 900px) {
+		body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; grid-template-areas: 'bar' 'form' 'preview'; height: auto; }
+		header { flex-wrap: wrap; padding: var(--s3) 16px; }
+		.brand p { display: none; }
+		.balance { order: 3; width: 100%; justify-content: space-between; }
+		form { overflow: visible; padding: 16px; }
+		fieldset { padding: var(--s3) 16px var(--s4); }
+		main { padding: var(--s4) 16px; border-left: 0; border-top: 1px solid var(--line); }
+		.paper { height: auto; width: 100%; }
+	}
+	@media (max-width: 420px) {
+		.actions button span, .actions .button span { display: none; }
+		.actions .primary span { display: inline; }
 	}
 </style>
 </head>
 <body>
 <header>
-	<h1>innnvoice</h1>
-	<div class="actions">
-		<button type="button" class="primary" id="download">Download PDF</button>
-		<label class="button" for="import">Import JSON<input type="file" id="import" accept=".json,application/json" hidden></label>
-		<button type="button" id="export">Export JSON</button>
-		<button type="button" class="ghost" id="reset" title="Start over from the sample invoice">Reset</button>
+	<div class="brand">
+		<div class="brand-mark" aria-hidden="true">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+		</div>
+		<div>
+			<h1>innnvoice</h1>
+			<p>PDF invoices, right in your browser</p>
+		</div>
 	</div>
 	<div class="balance" id="balance"></div>
+	<div class="actions">
+		<label class="button" for="import" title="Load an innnvoice.json template">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg><span>Import JSON</span><input type="file" id="import" accept=".json,application/json" hidden></label>
+		<button type="button" id="export" title="Save this invoice as innnvoice.json">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg><span>Export JSON</span></button>
+		<button type="button" class="ghost" id="reset" title="Start over from the sample invoice">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Reset</span></button>
+		<button type="button" class="primary" id="download">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M12 11v6M9 14l3 3 3-3"/></svg><span>Download PDF</span></button>
+	</div>
 </header>
 
 <form id="form" autocomplete="off">
@@ -170,7 +361,7 @@
 	<fieldset>
 		<legend>Invoice</legend>
 		<label>Title <input data-field="title" data-type="text"></label>
-		<div class="row">
+		<div class="row golden">
 			<label>Invoice No. <input data-field="invoiceNo" data-type="text"></label>
 			<label>Currency <input data-field="currency" data-type="text" maxlength="5"></label>
 		</div>
@@ -211,16 +402,21 @@
 
 	<fieldset>
 		<legend>Style &amp; file</legend>
-		<div class="row">
-			<label>Badge color <input type="color" id="color"></label>
+		<div class="row golden">
 			<label>File name <input data-field="output" data-type="text"></label>
+			<label>Badge color <input type="color" id="color"></label>
 		</div>
-		<p class="hint">Use <code>**bold**</code> anywhere, and placeholders <code>{year} {Month} {mon} {month} {MM} {DD}</code>. Everything stays in this browser.</p>
+		<p class="hint">Use <code>**bold**</code> anywhere, and placeholders <code>{year}</code> <code>{Month}</code> <code>{mon}</code> <code>{month}</code> <code>{MM}</code> <code>{DD}</code>.</p>
 	</fieldset>
+
+	<p class="privacy">
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+		Private by design. Nothing leaves this browser.
+	</p>
 </form>
 
 <main>
-	<iframe id="preview" title="Invoice preview"></iframe>
+	<div class="paper" id="preview" role="img" aria-label="Invoice preview"></div>
 	<div class="error" id="error" role="alert"></div>
 </main>
 
@@ -585,7 +781,18 @@ function renderInvoice(tpl, opts = {}) {
 	let output = fill(tpl.output ?? 'invoice-{year}-{MM}.pdf');
 	if (status === 'draft') output = output.replace(/(\.pdf)?$/i, '-DRAFT.pdf');
 
-	return { pdf, output, invoiceNo, status, currency, date: fmtDate(date), balance: money(balance), warnings };
+	return {
+		pdf,
+		content: ops.join('\n'),
+		page: [PAGE_W, PAGE_H],
+		output,
+		invoiceNo,
+		status,
+		currency,
+		date: fmtDate(date),
+		balance: money(balance),
+		warnings,
+	};
 }
 // </core>
 
@@ -768,7 +975,6 @@ $('#add-item').addEventListener('click', () => {
 // ─── Preview & download ──────────────────────────────────────────────────────
 
 let result = null;
-let previewUrl = null;
 let timer = null;
 
 function changed() {
@@ -799,10 +1005,56 @@ function render() {
 	flash(result.warnings[0] ?? '');
 	$('#balance').innerHTML = `Balance <b>${result.currency} ${result.balance}</b>`;
 
-	const url = URL.createObjectURL(new Blob([result.pdf], { type: 'application/pdf' }));
-	$('#preview').src = `${url}#toolbar=0&navpanes=0&view=FitH`;
-	if (previewUrl) setTimeout(URL.revokeObjectURL, 1000, previewUrl);
-	previewUrl = url;
+	$('#preview').innerHTML = toSvg(result.content, result.page);
+}
+
+// Draws the PDF content stream as SVG: the exact same drawing operators the
+// PDF uses, so the preview matches the download in every browser, phones included.
+function toSvg(content, [width, height]) {
+	const xml = str => String(str).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
+	const rgb = ([r, g, b]) => `rgb(${r * 255} ${g * 255} ${b * 255})`;
+	const tokens = content.match(/\((?:\\.|[^\\)])*\)|\/\w+|[^\s()]+/g) ?? [];
+	const groups = [0];
+	let args = [];
+	let fill = '#000';
+	let font = 'F1';
+	let size = 12;
+	let tracking = 0;
+	let matrix = [1, 0, 0, 1, 0, 0];
+	let path = '';
+	let out = '';
+
+	for (const tok of tokens) {
+		if (tok[0] === '(') args.push(tok.slice(1, -1).replace(/\\(.)/g, '$1'));
+		else if (tok[0] === '/') args.push(tok.slice(1));
+		else if (/^-?[\d.]+$/.test(tok)) args.push(Number(tok));
+		else {
+			const a = args;
+			args = [];
+			if (tok === 'q') groups.push(0);
+			else if (tok === 'Q') out += '</g>'.repeat(groups.pop());
+			else if (tok === 'cm') {
+				out += `<g transform="matrix(${a.join(' ')})">`;
+				groups[groups.length - 1]++;
+			} else if (tok === 'rg') fill = rgb(a);
+			else if (tok === 'Tf') [font, size] = a;
+			else if (tok === 'Tc') [tracking] = a;
+			else if (tok === 'Tm') matrix = a;
+			else if (tok === 'Tj') {
+				const weight = font === 'F2' ? 700 : 400;
+				out += `<text transform="matrix(${matrix.join(' ')}) scale(1 -1)" font-size="${size}" font-weight="${weight}" letter-spacing="${tracking}" fill="${fill}">${xml(a[0])}</text>`;
+			} else if (tok === 're') path += `M${a[0]} ${a[1]}h${a[2]}v${a[3]}h${-a[2]}Z`;
+			else if (tok === 'm') path += `M${a.join(' ')}`;
+			else if (tok === 'l') path += `L${a.join(' ')}`;
+			else if (tok === 'c') path += `C${a.join(' ')}`;
+			else if (tok === 'h') path += 'Z';
+			else if (tok === 'f') {
+				out += `<path d="${path}" fill="${fill}"/>`;
+				path = '';
+			}
+		}
+	}
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" font-family="Helvetica, Arial, sans-serif" style="white-space: pre" text-rendering="geometricPrecision"><rect width="100%" height="100%" fill="#fff"/><g transform="matrix(1 0 0 -1 0 ${height})">${out}</g></svg>`;
 }
 
 function flash(message) {
