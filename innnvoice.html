@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>innnvoice</title>
+<meta name="description" content="Fill in an invoice and download it as a PDF. Works offline, nothing leaves your browser.">
+<style>
+	:root {
+		--bg: #f4f4f5;
+		--panel: #ffffff;
+		--ink: #27272a;
+		--muted: #71717a;
+		--line: #e4e4e7;
+		--field: #fafafa;
+		--accent: #5a9f7d;
+		--accent-ink: #ffffff;
+		--danger: #d35c5c;
+		--radius: 8px;
+		color-scheme: light;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--bg: #09090b;
+			--panel: #18181b;
+			--ink: #f4f4f5;
+			--muted: #a1a1aa;
+			--line: #27272a;
+			--field: #0f0f11;
+			color-scheme: dark;
+		}
+	}
+
+	* { box-sizing: border-box; }
+	html, body { margin: 0; height: 100%; }
+	body {
+		background: var(--bg);
+		color: var(--ink);
+		font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+		display: grid;
+		grid-template-columns: minmax(360px, 480px) 1fr;
+		grid-template-rows: auto 1fr;
+		grid-template-areas: 'bar bar' 'form preview';
+	}
+
+	header {
+		grid-area: bar;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 16px;
+		background: var(--panel);
+		border-bottom: 1px solid var(--line);
+		position: sticky;
+		top: 0;
+		z-index: 2;
+	}
+	header h1 { font-size: 16px; margin: 0; letter-spacing: -0.01em; }
+	header .balance { margin-left: auto; color: var(--muted); white-space: nowrap; }
+	header .balance b { color: var(--ink); }
+
+	button, .button {
+		font: inherit;
+		border: 1px solid var(--line);
+		background: var(--panel);
+		color: var(--ink);
+		padding: 7px 12px;
+		border-radius: var(--radius);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	button:hover, .button:hover { border-color: var(--muted); }
+	button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+	button.primary:hover { filter: brightness(1.05); }
+	button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+	button.ghost:hover { color: var(--danger); }
+	.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+	form {
+		grid-area: form;
+		overflow-y: auto;
+		padding: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		border-right: 1px solid var(--line);
+		background: var(--panel);
+	}
+	fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
+	legend { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+	.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+	label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+	label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+	input, textarea, select {
+		font: inherit;
+		font-size: 14px;
+		color: var(--ink);
+		background: var(--field);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		padding: 7px 9px;
+		width: 100%;
+		min-width: 0;
+	}
+	input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+	textarea { resize: vertical; min-height: 64px; }
+	input[type='checkbox'] { width: auto; accent-color: var(--accent); }
+	input[type='color'] { padding: 2px; height: 34px; }
+	hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
+	.hint { font-size: 12px; color: var(--muted); margin: 0; }
+	code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+	.status { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+	.status input { position: absolute; inset: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+	.status label { text-align: center; padding: 7px 0; font-size: 13px; color: var(--ink); cursor: pointer; border-left: 1px solid var(--line); display: block; }
+	.status label:first-of-type { border-left: 0; }
+	.status input:checked + label { background: var(--badge, var(--accent)); color: #fff; font-weight: 600; }
+	.status input:focus-visible + label { outline: 2px solid var(--ink); outline-offset: -3px; }
+
+	.items { display: grid; gap: 8px; }
+	.item { display: grid; grid-template-columns: minmax(0, 1fr) 64px 92px 32px; gap: 6px; align-items: start; }
+	.item textarea { min-height: 36px; }
+	.item .amount { grid-column: 1 / -1; font-size: 12px; color: var(--muted); text-align: right; margin-top: -4px; }
+	.item-head { display: grid; grid-template-columns: minmax(0, 1fr) 64px 92px 32px; gap: 6px; font-size: 12px; color: var(--muted); }
+
+	main { grid-area: preview; position: relative; min-height: 0; }
+	main iframe { border: 0; width: 100%; height: 100%; display: block; background: var(--bg); }
+	.error {
+		position: absolute;
+		inset: 16px 16px auto 16px;
+		background: var(--danger);
+		color: #fff;
+		padding: 10px 14px;
+		border-radius: var(--radius);
+		display: none;
+	}
+	.error.show { display: block; }
+
+	@media (max-width: 860px) {
+		body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 80vh; grid-template-areas: 'bar' 'form' 'preview'; height: auto; }
+		form { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+		header { flex-wrap: wrap; }
+		header .balance { order: 3; width: 100%; margin-left: 0; }
+	}
+</style>
+</head>
+<body>
+<header>
+	<h1>innnvoice</h1>
+	<div class="actions">
+		<button type="button" class="primary" id="download">Download PDF</button>
+		<label class="button" for="import">Import JSON<input type="file" id="import" accept=".json,application/json" hidden></label>
+		<button type="button" id="export">Export JSON</button>
+		<button type="button" class="ghost" id="reset" title="Start over from the sample invoice">Reset</button>
+	</div>
+	<div class="balance" id="balance"></div>
+</header>
+
+<form id="form" autocomplete="off">
+	<fieldset>
+		<legend>Status</legend>
+		<div class="status" id="status">
+			<input type="radio" name="status" id="s-paid" value="paid"><label for="s-paid">Paid</label>
+			<input type="radio" name="status" id="s-due" value="due"><label for="s-due">Due</label>
+			<input type="radio" name="status" id="s-unpaid" value="unpaid"><label for="s-unpaid">Unpaid</label>
+			<input type="radio" name="status" id="s-draft" value="draft"><label for="s-draft">Draft</label>
+		</div>
+	</fieldset>
+
+	<fieldset>
+		<legend>Invoice</legend>
+		<label>Title <input data-field="title" data-type="text"></label>
+		<div class="row">
+			<label>Invoice No. <input data-field="invoiceNo" data-type="text"></label>
+			<label>Currency <input data-field="currency" data-type="text" maxlength="5"></label>
+		</div>
+		<div class="row">
+			<label>Date <input type="date" data-field="date" data-type="date"></label>
+			<label>Due <input type="date" data-field="due" data-type="date"></label>
+		</div>
+		<label>Intro <span class="hint">One line each. <code>Label: value</code> gets a muted label.</span>
+			<textarea data-field="intro" data-type="lines" rows="3"></textarea></label>
+	</fieldset>
+
+	<fieldset>
+		<legend>Parties</legend>
+		<div class="row">
+			<label>From <textarea data-field="from" data-type="lines" rows="4"></textarea></label>
+			<label>To <textarea data-field="to" data-type="lines" rows="4"></textarea></label>
+		</div>
+	</fieldset>
+
+	<fieldset>
+		<legend>Items</legend>
+		<div class="item-head"><span>Description</span><span>Qty</span><span>Rate</span><span></span></div>
+		<div class="items" id="items"></div>
+		<button type="button" id="add-item">+ Add item</button>
+		<label>Paid to date <span class="hint">Ignored when the status is Paid (paid in full).</span>
+			<input type="number" step="0.01" data-field="paid" data-type="number"></label>
+	</fieldset>
+
+	<fieldset>
+		<legend>Notes &amp; payment</legend>
+		<label class="check"><input type="checkbox" data-field="showNote" data-type="bool"> Show invoice note and footer</label>
+		<label>Invoice note <span class="hint">Separate paragraphs with a blank line.</span>
+			<textarea data-field="notes" data-type="paras" rows="4"></textarea></label>
+		<label>Footer <input data-field="footer" data-type="text"></label>
+		<label class="check"><input type="checkbox" data-field="showBank" data-type="bool"> Show bank details</label>
+		<label>Bank details <textarea data-field="details" data-type="lines" rows="4"></textarea></label>
+	</fieldset>
+
+	<fieldset>
+		<legend>Style &amp; file</legend>
+		<div class="row">
+			<label>Badge color <input type="color" id="color"></label>
+			<label>File name <input data-field="output" data-type="text"></label>
+		</div>
+		<p class="hint">Use <code>**bold**</code> anywhere, and placeholders <code>{year} {Month} {mon} {month} {MM} {DD}</code>. Everything stays in this browser.</p>
+	</fieldset>
+</form>
+
+<main>
+	<iframe id="preview" title="Invoice preview"></iframe>
+	<div class="error" id="error" role="alert"></div>
+</main>
+
+<script>
+// <core> Generated by scripts/build-html.js from ./innnvoice; edit it there.
+function renderInvoice(tpl, opts = {}) {
+	const fail = msg => {
+		throw new Error(msg);
+	};
+
+	// ─── Dates ───────────────────────────────────────────────────────────────────
+
+	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+	function parseDate(str) {
+		const m = /^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/.exec(String(str).trim());
+		if (!m) fail(`Invalid date "${str}". Use YYYY-MM or YYYY-MM-DD.`);
+		const d = { year: +m[1], month: +m[2], day: m[3] ? +m[3] : 1 };
+		if (d.month < 1 || d.month > 12 || d.day < 1 || d.day > 31) fail(`Invalid date "${str}".`);
+		return d;
+	}
+
+	const pad = n => String(n).padStart(2, '0');
+	const fmtDate = d => `${pad(d.day)} ${MONTHS[d.month - 1]} ${d.year}`;
+
+	// ─── Template ────────────────────────────────────────────────────────────────
+
+	const now = opts.now ?? new Date();
+	const dateArg = opts.date ?? tpl.date;
+	const date = dateArg ? parseDate(dateArg) : { year: now.getFullYear(), month: now.getMonth() + 1, day: 1 };
+	const dueArg = opts.dueDate ?? tpl.due;
+	const due = dueArg ? parseDate(dueArg) : date;
+
+	const vars = {
+		year: date.year,
+		mon: MONTHS[date.month - 1],
+		Month: MONTHS_LONG[date.month - 1],
+		month: date.month,
+		MM: pad(date.month),
+		DD: pad(date.day),
+	};
+	const fill = str => String(str ?? '').replace(/\{(\w+)\}/g, (all, key) => (key in vars ? vars[key] : all));
+
+	// Status: option > template "status" > paid.
+	const STATUSES = {
+		paid: { label: 'Paid', color: '#5a9f7d' },
+		due: { label: 'Due', color: '#d35c5c' },
+		unpaid: { label: 'Unpaid', color: '#d35c5c' },
+		draft: { label: 'Draft', color: '#a3a3a3' },
+	};
+	for (const [key, color] of Object.entries(tpl.statusColors ?? {})) if (STATUSES[key]) STATUSES[key].color = color;
+	const status = opts.status ?? tpl.status ?? 'paid';
+	if (!STATUSES[status]) fail(`Unknown status "${status}". Use paid, due, unpaid or draft.`);
+	const { label: statusLabel, color: statusColor } = STATUSES[status];
+
+	const currency = tpl.currency ?? 'USD';
+	const items = (tpl.items ?? []).map(item => ({ ...item, quantity: Number(item.quantity ?? 1), rate: Number(item.rate ?? 0) }));
+	if (!items.length) fail('Template has no "items".');
+	if (opts.amount !== undefined && opts.amount !== '') items[0].rate = Number(opts.amount);
+	for (const item of items) {
+		if (!Number.isFinite(item.rate) || !Number.isFinite(item.quantity)) fail('Item quantity/rate must be numbers.');
+	}
+
+	const cents = n => Math.round(n * 100) / 100;
+	const subTotal = cents(items.reduce((sum, item) => sum + cents(item.quantity * item.rate), 0));
+	// A paid invoice is paid in full unless paidAmount says otherwise.
+	const paidAmount = cents(Number(opts.paidAmount ?? (status === 'paid' ? subTotal : (tpl.paid ?? 0))));
+	if (!Number.isFinite(paidAmount)) fail('Paid amount must be a number.');
+	const balance = cents(subTotal - paidAmount);
+
+	const plain = n => n.toFixed(2);
+	const money = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	const invoiceNo = fill(tpl.invoiceNo ?? `${vars.year}-${vars.MM}`);
+
+	// ─── Fonts (Helvetica / Helvetica-Bold AFM widths, chars 32–126) ─────────────
+
+	const WIDTHS = {
+		F1: [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584],
+		F2: [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584],
+	};
+
+	// Map to WinAnsi-safe text; anything else becomes "?".
+	const clean = str =>
+		String(str)
+			.replace(/[‘’]/g, "'")
+			.replace(/[“”]/g, '"')
+			.replace(/[–—]/g, '-')
+			.replace(/…/g, '...')
+			.replace(/[^\n\x20-\x7e\xa0-\xff]/g, '?');
+
+	const textWidth = (str, font, size, tracking = 0) =>
+		[...str].reduce((w, ch) => w + (WIDTHS[font][ch.charCodeAt(0) - 32] ?? 556), 0) * (size / 1000) +
+		tracking * Math.max(str.length - 1, 0);
+
+	// ─── Drawing (top-down layout units, scaled onto A4) ─────────────────────────
+
+	const PAGE_W = 595.28;
+	const PAGE_H = 841.89;
+	const MARGIN = 36; // points
+	const S = (PAGE_W - MARGIN * 2) / 1752; // layout units → points
+	const ops = [];
+	const warnings = [];
+	const num = n => (Math.round(n * 1000) / 1000).toString();
+
+	function rgb(hex) {
+		const h = String(hex).replace('#', '');
+		const full = h.length === 3 ? [...h].map(c => c + c).join('') : h;
+		const v = parseInt(full, 16);
+		if (Number.isNaN(v)) return '0 0 0';
+		return [(v >> 16) & 255, (v >> 8) & 255, v & 255].map(c => num(c / 255)).join(' ');
+	}
+
+	const escape = str => str.replace(/[\\()]/g, m => `\\${m}`);
+
+	function text(x, y, str, { font = 'F1', size = FS, color = INK, align = 'left', tracking = 0 } = {}) {
+		str = clean(str);
+		const w = textWidth(str, font, size, tracking);
+		if (align === 'right') x -= w;
+		if (align === 'center') x -= w / 2;
+		ops.push(`BT ${rgb(color)} rg /${font} ${num(size)} Tf ${num(tracking)} Tc 1 0 0 -1 ${num(x)} ${num(y)} Tm (${escape(str)}) Tj ET`);
+		return w;
+	}
+
+	const rect = (x, y, w, h, color) => ops.push(`${rgb(color)} rg ${num(x)} ${num(y)} ${num(w)} ${num(h)} re f`);
+
+	function roundRect(x, y, w, h, r, color) {
+		const k = r * 0.5523;
+		ops.push(
+			`${rgb(color)} rg`,
+			`${num(x + r)} ${num(y)} m ${num(x + w - r)} ${num(y)} l`,
+			`${num(x + w - r + k)} ${num(y)} ${num(x + w)} ${num(y + r - k)} ${num(x + w)} ${num(y + r)} c`,
+			`${num(x + w)} ${num(y + h - r)} l`,
+			`${num(x + w)} ${num(y + h - r + k)} ${num(x + w - r + k)} ${num(y + h)} ${num(x + w - r)} ${num(y + h)} c`,
+			`${num(x + r)} ${num(y + h)} l`,
+			`${num(x + r - k)} ${num(y + h)} ${num(x)} ${num(y + h - r + k)} ${num(x)} ${num(y + h - r)} c`,
+			`${num(x)} ${num(y + r)} l`,
+			`${num(x)} ${num(y + r - k)} ${num(x + r - k)} ${num(y)} ${num(x + r)} ${num(y)} c h f`,
+		);
+	}
+
+	// "Plain **bold** plain" → lines of runs, word-wrapped to maxWidth.
+	function wrapRich(str, { size = FS, maxWidth = Infinity } = {}) {
+		const lines = [];
+		for (const para of clean(str).split('\n')) {
+			const tokens = [];
+			para.split('**').forEach((seg, i) => {
+				const f = i % 2 ? 'F2' : 'F1';
+				for (const t of seg.split(/(\s+)/)) if (t) tokens.push({ t, f });
+			});
+
+			let line = [];
+			let w = 0;
+			for (const tok of tokens) {
+				const space = /^\s+$/.test(tok.t);
+				const tw = textWidth(tok.t, tok.f, size);
+				if (space && !line.length) continue;
+				if (!space && line.length && w + tw > maxWidth) {
+					while (line.length && /^\s+$/.test(line.at(-1).t)) line.pop();
+					lines.push(line);
+					line = [];
+					w = 0;
+				}
+				line.push(tok);
+				w += tw;
+			}
+			lines.push(line);
+		}
+		return lines;
+	}
+
+	// Draws rich text with its first baseline at y; returns the last baseline.
+	function rich(x, y, str, { size = FS, maxWidth = CW, lineHeight = LH, color = INK } = {}) {
+		const lines = wrapRich(fill(str), { size, maxWidth });
+		lines.forEach((line, i) => {
+			let cx = x;
+			for (const run of line) cx += text(cx, y + i * lineHeight, run.t, { font: run.f, size, color });
+		});
+		return y + (lines.length - 1) * lineHeight;
+	}
+
+	// ─── Layout ──────────────────────────────────────────────────────────────────
+
+	const FS = 28; // body font size
+	const LH = 39; // body line height
+	const L = 0;
+	const R = 1752;
+	const CW = R - L;
+	const COL2 = CW / 2; // right column of the header block
+	const TOT = CW / 4; // totals column
+	const INK = '#333333';
+	const MUTED = '#8c8c8c';
+	const LINE = '#e3e3e3';
+
+	ops.push(`q ${num(S)} 0 0 ${num(-S)} ${num(MARGIN)} ${num(PAGE_H - MARGIN)} cm`);
+
+	// Header: status badge + title
+	const badge = { x: L, y: 0, h: 70 };
+	const badgeSize = 38;
+	badge.w = textWidth(statusLabel, 'F1', badgeSize) + 44;
+	roundRect(badge.x, badge.y, badge.w, badge.h, 4, statusColor);
+	text(badge.x + badge.w / 2, badge.y + badge.h / 2 + badgeSize * 0.36, statusLabel, { size: badgeSize, color: '#ffffff', align: 'center' });
+	text(badge.x + badge.w + 31, badge.y + badge.h / 2 + 42 * 0.36, fill(tpl.title ?? 'Invoice'), { font: 'F2', size: 42 });
+
+	// Intro: "Key: value" labels muted, statement wrapped to the golden 61.8% measure.
+	let y = 138 - LH;
+	for (const line of tpl.intro ?? []) {
+		const m = /^([A-Za-z][A-Za-z .]{0,15}):\s+(.+)$/.exec(fill(line));
+		if (m) {
+			y += LH;
+			const w = text(L, y, `${m[1]}: `, { color: MUTED });
+			rich(L + w, y, m[2]);
+		} else y = rich(L, y + LH, line, { maxWidth: CW * 0.618 });
+	}
+
+	// From / To (left) and invoice meta (right)
+	const top = y + 131;
+	text(L, top, 'From', { font: 'F2' });
+	let ly = top + 59 - LH;
+	for (const line of tpl.from ?? []) ly = rich(L, ly + LH, line, { maxWidth: COL2 - 40 });
+	ly += 70;
+	text(L, ly, 'To', { font: 'F2' });
+	ly += 59 - LH;
+	for (const line of tpl.to ?? []) ly = rich(L, ly + LH, line, { maxWidth: COL2 - 40 });
+
+	let ry = top - 2;
+	for (const [label, value] of [
+		['Invoice No.', `# ${invoiceNo}`],
+		['Date', fmtDate(date)],
+		['Invoice Due', fmtDate(due)],
+	]) {
+		text(COL2, ry, label, { font: 'F2' });
+		text(COL2, ry + 55, value);
+		ry += 55 + 84;
+	}
+	ry -= 84;
+
+	// Line items. Quantity/rate are left blank for a single unit, as in the original.
+	const QTY = 1282;
+	const RATE = 1471;
+	y = Math.max(ly, ry) + 120;
+	text(L, y, 'Description', { font: 'F2', color: MUTED });
+	text(QTY, y, 'Quantity', { font: 'F2', color: MUTED, align: 'right' });
+	text(RATE, y, 'Rate', { font: 'F2', color: MUTED, align: 'right' });
+	text(R, y, 'Amount', { font: 'F2', color: MUTED, align: 'right' });
+	let lineY = y + 22;
+	rect(L, lineY, CW, 4, LINE);
+	lineY += 4;
+
+	for (const item of items) {
+		const base = lineY + 47;
+		const last = rich(L, base, item.description ?? '', { maxWidth: QTY - L - 200 });
+		if (item.quantity !== 1) {
+			text(QTY, base, String(item.quantity), { align: 'right' });
+			text(RATE, base, plain(item.rate), { align: 'right' });
+		}
+		text(R, base, `${currency} ${plain(cents(item.quantity * item.rate))}`, { align: 'right' });
+		lineY = last + 61;
+		rect(L, lineY, CW, 2, LINE);
+	}
+
+	// Totals
+	const totals = [
+		['Sub Total', money(subTotal), 'F1'],
+		[`Total (${currency})`, money(subTotal), 'F2'],
+		[`Paid to Date (${currency})`, money(paidAmount), 'F2'],
+	];
+	totals.forEach(([label, value, font], i) => {
+		const base = lineY + 59;
+		text(TOT + 14, base, label, { font });
+		text(R - 14, base, value, { font, align: 'right' });
+		lineY = base + 41;
+		if (i < totals.length - 1) rect(TOT, lineY, R - TOT, 2, LINE);
+	});
+
+	// Balance bar: coloured label cell + bordered value cell
+	const box = { x: TOT, y: lineY + 2, w: R - TOT, h: 100, cell: 164, border: 4 };
+	roundRect(box.x, box.y, box.w, box.h, 5, statusColor);
+	rect(box.x + box.cell, box.y + box.border, box.w - box.cell - box.border, box.h - box.border * 2, '#ffffff');
+	const boxBase = box.y + box.h / 2 + FS * 0.36;
+	text(box.x + box.cell / 2, boxBase, 'Balance', { color: '#ffffff', align: 'center' });
+	text(box.x + box.cell + 16, boxBase, currency, { font: 'F2' });
+	text(R - 22, boxBase, money(balance), { font: 'F2', align: 'right' });
+	y = box.y + box.h;
+
+	// Notes (opt-in: --note or "showNote": true)
+	const showNote = opts.note ?? tpl.showNote ?? false;
+	if (showNote && tpl.notes?.length) {
+		text(L, (y += 90), 'Invoice Note', { font: 'F2' });
+		y += 100 - 64;
+		for (const para of tpl.notes) y = rich(L, y + 64, para);
+	}
+
+	// Payment details (opt-in: --bank or "showBank": true)
+	const showBank = opts.bank ?? tpl.showBank ?? false;
+	if (showBank && tpl.details?.length) {
+		rect(L, (y += 60), CW, 2, LINE);
+		y += 82 - 64;
+		for (const line of tpl.details) y = rich(L, y + 64, line);
+		rect(L, (y += 60), CW, 2, LINE);
+		y += 22;
+	}
+
+	if (showNote && tpl.footer) y = rich(L, y + 60, tpl.footer);
+
+	ops.push('Q');
+	if (y * S > PAGE_H - MARGIN * 2) warnings.push('Content runs past the bottom of the page; shorten the template.');
+
+	// ─── PDF serialization ───────────────────────────────────────────────────────
+
+	const bytes = str => Uint8Array.from(str, ch => ch.charCodeAt(0) & 255);
+	const concat = chunks => {
+		const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+		let at = 0;
+		for (const c of chunks) {
+			out.set(c, at);
+			at += c.length;
+		}
+		return out;
+	};
+
+	function buildPdf(content, info) {
+		const raw = bytes(content);
+		const stream = opts.deflate ? new Uint8Array(opts.deflate(raw)) : raw;
+		const filter = opts.deflate ? ' /Filter /FlateDecode' : '';
+		const pdfString = s => `(${escape(clean(s))})`;
+		const objects = [
+			'<< /Type /Catalog /Pages 2 0 R >>',
+			'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+			`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>`,
+			'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+			'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+			[bytes(`<< /Length ${stream.length}${filter} >>\nstream\n`), stream, bytes('\nendstream')],
+			`<< /Title ${pdfString(info.title)} /Author ${pdfString(info.author)} /Producer (innnvoice) /CreationDate (D:${info.created}) >>`,
+		];
+
+		const parts = [bytes('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')];
+		let offset = parts[0].length;
+		const offsets = [];
+		objects.forEach((body, i) => {
+			const chunk = concat([bytes(`${i + 1} 0 obj\n`), ...(Array.isArray(body) ? body : [bytes(body)]), bytes('\nendobj\n')]);
+			offsets.push(offset);
+			parts.push(chunk);
+			offset += chunk.length;
+		});
+
+		const xref = [
+			`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`,
+			...offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`),
+			`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 7 0 R >>\nstartxref\n${offset}\n%%EOF\n`,
+		].join('');
+		parts.push(bytes(xref));
+		return concat(parts);
+	}
+
+	const pdf = buildPdf(ops.join('\n'), {
+		title: invoiceNo || fill(tpl.title),
+		author: tpl.from?.[0] ?? '',
+		created: now.toISOString().replace(/[-:T]/g, '').slice(0, 14),
+	});
+
+	let output = fill(tpl.output ?? 'invoice-{year}-{MM}.pdf');
+	if (status === 'draft') output = output.replace(/(\.pdf)?$/i, '-DRAFT.pdf');
+
+	return { pdf, output, invoiceNo, status, currency, date: fmtDate(date), balance: money(balance), warnings };
+}
+// </core>
+
+// <sample> Generated by scripts/build-html.js from ./innnvoice.json.
+const SAMPLE = {
+	"output": "invoices/{year}/{month}-{year}-Acme-{mon}.pdf",
+	"title": "Acme Payment",
+	"intro": [
+		"To: **Acme Corp.**",
+		"By: Jane Doe d/b/a Example Studio LLC",
+		"Services performed pursuant to the Consulting Agreement, Payment directed to Example Studio LLC, 548 Market St, San Francisco, CA 94104."
+	],
+	"from": [
+		"Jane Doe",
+		"(dba Example Studio LLC)",
+		"548 Market St,",
+		"San Francisco, CA 94104"
+	],
+	"to": [
+		"Acme Corp.",
+		"101 Mission St, Suite 100",
+		"San Francisco, CA 94105",
+		"United States"
+	],
+	"invoiceNo": "{year}-Acme-{mon}",
+	"date": null,
+	"due": null,
+	"currency": "USD",
+	"items": [
+		{
+			"description": "Monthly consulting fee",
+			"quantity": 1,
+			"rate": 5000
+		}
+	],
+	"paid": 0,
+	"status": "paid",
+	"showNote": false,
+	"showBank": false,
+	"notes": [
+		"Payments are accepted via bank transfer in USD.\nFeel free to ask any questions via jane@example.com.",
+		"Here are the account details for Jane Doe doing business as Example Studio LLC.\nDomestic transfers use the routing number; international transfers use the Swift code."
+	],
+	"details": [
+		"**Account holder**: Example Studio LLC",
+		"**Account number**: 0000000000",
+		"**Account type**: Checking",
+		"**Routing number (for wire and ACH)**: 000000000",
+		"**Swift/BIC**: EXAMPLE00",
+		"**Bank name and address**: Example Bank, 400 California St, San Francisco, CA 94104"
+	],
+	"footer": "**Note**:"
+};
+// </sample>
+
+const STORE_KEY = 'innnvoice:template';
+const COLORS = { paid: '#5a9f7d', due: '#d35c5c', unpaid: '#d35c5c', draft: '#a3a3a3' };
+const $ = sel => document.querySelector(sel);
+const form = $('#form');
+const itemsEl = $('#items');
+
+const pad = n => String(n).padStart(2, '0');
+const firstOfMonth = () => {
+	const now = new Date();
+	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+};
+const clone = obj => JSON.parse(JSON.stringify(obj));
+
+let tpl = load() ?? clone(SAMPLE);
+
+function load() {
+	try {
+		const saved = localStorage.getItem(STORE_KEY);
+		return saved ? JSON.parse(saved) : null;
+	} catch {
+		return null;
+	}
+}
+
+function save() {
+	try {
+		localStorage.setItem(STORE_KEY, JSON.stringify(tpl));
+	} catch {}
+}
+
+// ─── Form ↔ template ─────────────────────────────────────────────────────────
+
+const READ = {
+	text: el => el.value,
+	date: el => el.value || null,
+	number: el => (el.value === '' ? 0 : Number(el.value)),
+	bool: el => el.checked,
+	lines: el => el.value.split('\n').filter(line => line.trim()),
+	paras: el =>
+		el.value
+			.split(/\n\s*\n/)
+			.map(p => p.trim())
+			.filter(Boolean),
+};
+
+const WRITE = {
+	text: (el, v) => (el.value = v ?? ''),
+	date: (el, v) => (el.value = v ?? ''),
+	number: (el, v) => (el.value = v ?? 0),
+	bool: (el, v) => (el.checked = !!v),
+	lines: (el, v) => (el.value = (v ?? []).join('\n')),
+	paras: (el, v) => (el.value = (v ?? []).join('\n\n')),
+};
+
+function fillForm() {
+	if (!tpl.date) tpl.date = firstOfMonth();
+	for (const el of form.querySelectorAll('[data-field]')) WRITE[el.dataset.type](el, tpl[el.dataset.field]);
+	const status = tpl.status ?? 'paid';
+	$(`#s-${status}`).checked = true;
+	renderItems();
+}
+
+function renderItems() {
+	itemsEl.replaceChildren(
+		...tpl.items.map((item, i) => {
+			const row = document.createElement('div');
+			row.className = 'item';
+			row.dataset.index = i;
+			row.innerHTML = `
+				<textarea rows="1" data-key="description" aria-label="Description"></textarea>
+				<input type="number" step="any" data-key="quantity" aria-label="Quantity">
+				<input type="number" step="0.01" data-key="rate" aria-label="Rate">
+				<button type="button" class="ghost" data-remove aria-label="Remove item">✕</button>
+				<div class="amount"></div>`;
+			row.querySelector('[data-key="description"]').value = item.description ?? '';
+			row.querySelector('[data-key="quantity"]').value = item.quantity ?? 1;
+			row.querySelector('[data-key="rate"]').value = item.rate ?? 0;
+			return row;
+		}),
+	);
+	updateAmounts();
+}
+
+function updateAmounts() {
+	const currency = tpl.currency || 'USD';
+	for (const row of itemsEl.children) {
+		const item = tpl.items[row.dataset.index];
+		const amount = Number(item.quantity ?? 1) * Number(item.rate ?? 0);
+		row.querySelector('.amount').textContent = Number.isFinite(amount)
+			? `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+			: '';
+	}
+}
+
+form.addEventListener('input', event => {
+	const el = event.target;
+	if (el.dataset.field) tpl[el.dataset.field] = READ[el.dataset.type](el);
+	else if (el.name === 'status') tpl.status = el.value;
+	else if (el.dataset.key) {
+		const item = tpl.items[el.closest('.item').dataset.index];
+		item[el.dataset.key] = el.dataset.key === 'description' ? el.value : el.value === '' ? 0 : Number(el.value);
+		updateAmounts();
+	} else if (el.id === 'color') {
+		tpl.statusColors = { ...tpl.statusColors, [tpl.status ?? 'paid']: el.value };
+	}
+	if (el.dataset.field === 'currency') updateAmounts();
+	changed();
+});
+
+itemsEl.addEventListener('click', event => {
+	if (!event.target.closest('[data-remove]')) return;
+	if (tpl.items.length === 1) return flash('An invoice needs at least one item.');
+	tpl.items.splice(event.target.closest('.item').dataset.index, 1);
+	renderItems();
+	changed();
+});
+
+$('#add-item').addEventListener('click', () => {
+	tpl.items.push({ description: '', quantity: 1, rate: 0 });
+	renderItems();
+	itemsEl.lastElementChild.querySelector('textarea').focus();
+	changed();
+});
+
+// ─── Preview & download ──────────────────────────────────────────────────────
+
+let result = null;
+let previewUrl = null;
+let timer = null;
+
+function changed() {
+	save();
+	clearTimeout(timer);
+	timer = setTimeout(render, 250);
+}
+
+function render() {
+	const status = tpl.status ?? 'paid';
+	const color = tpl.statusColors?.[status] ?? COLORS[status];
+	$('#color').value = color;
+	document.documentElement.style.setProperty('--badge', color);
+
+	try {
+		result = renderInvoice(tpl, {
+			status,
+			date: tpl.date || firstOfMonth(),
+			dueDate: tpl.due || undefined,
+			note: !!tpl.showNote,
+			bank: !!tpl.showBank,
+		});
+	} catch (err) {
+		result = null;
+		return flash(err.message);
+	}
+
+	flash(result.warnings[0] ?? '');
+	$('#balance').innerHTML = `Balance <b>${result.currency} ${result.balance}</b>`;
+
+	const url = URL.createObjectURL(new Blob([result.pdf], { type: 'application/pdf' }));
+	$('#preview').src = `${url}#toolbar=0&navpanes=0&view=FitH`;
+	if (previewUrl) setTimeout(URL.revokeObjectURL, 1000, previewUrl);
+	previewUrl = url;
+}
+
+function flash(message) {
+	const el = $('#error');
+	el.textContent = message;
+	el.classList.toggle('show', !!message);
+}
+
+function download(blob, name) {
+	const a = document.createElement('a');
+	a.href = URL.createObjectURL(blob);
+	a.download = name;
+	a.click();
+	setTimeout(URL.revokeObjectURL, 1000, a.href);
+}
+
+$('#download').addEventListener('click', () => {
+	clearTimeout(timer);
+	render();
+	if (!result) return;
+	const name = result.output.split('/').pop() || 'invoice.pdf';
+	download(new Blob([result.pdf], { type: 'application/pdf' }), name.endsWith('.pdf') ? name : `${name}.pdf`);
+});
+
+$('#export').addEventListener('click', () => {
+	download(new Blob([JSON.stringify(tpl, null, 2) + '\n'], { type: 'application/json' }), 'innnvoice.json');
+});
+
+$('#import').addEventListener('change', async event => {
+	const file = event.target.files[0];
+	event.target.value = '';
+	if (!file) return;
+	try {
+		const data = JSON.parse(await file.text());
+		if (!Array.isArray(data.items) || !data.items.length) throw new Error('That JSON has no "items".');
+		tpl = data;
+		fillForm();
+		changed();
+	} catch (err) {
+		flash(`Could not import ${file.name}: ${err.message}`);
+	}
+});
+
+$('#reset').addEventListener('click', () => {
+	if (!confirm('Replace everything with the sample invoice?')) return;
+	tpl = clone(SAMPLE);
+	fillForm();
+	changed();
+});
+
+fillForm();
+render();
+</script>
+</body>
+</html>

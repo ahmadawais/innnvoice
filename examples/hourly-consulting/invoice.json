@@ -1,0 +1,17 @@
+{
+  "title": "Consulting Hours",
+  "intro": [
+    "To: **Initech LLC**",
+    "Period: {Month} {year}"
+  ],
+  "from": ["Sam Rivera", "Independent Consultant", "1450 Valencia St", "San Francisco, CA 94110"],
+  "to": ["Initech LLC", "Accounts Payable", "300 Howard St", "San Francisco, CA 94105"],
+  "invoiceNo": "SR-{year}-{MM}",
+  "currency": "USD",
+  "items": [
+    { "description": "Architecture review and RFC", "quantity": 12, "rate": 180 },
+    { "description": "Pairing sessions with platform team", "quantity": 20, "rate": 180 },
+    { "description": "On-call incident support (weekend rate)", "quantity": 6, "rate": 270 }
+  ],
+  "status": "unpaid"
+}

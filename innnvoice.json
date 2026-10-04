@@ -1,0 +1,45 @@
+{
+  "output": "invoices/{year}/{month}-{year}-Acme-{mon}.pdf",
+  "title": "Acme Payment",
+  "intro": [
+    "To: **Acme Corp.**",
+    "By: Jane Doe d/b/a Example Studio LLC",
+    "Services performed pursuant to the Consulting Agreement, Payment directed to Example Studio LLC, 548 Market St, San Francisco, CA 94104."
+  ],
+  "from": [
+    "Jane Doe",
+    "(dba Example Studio LLC)",
+    "548 Market St,",
+    "San Francisco, CA 94104"
+  ],
+  "to": [
+    "Acme Corp.",
+    "101 Mission St, Suite 100",
+    "San Francisco, CA 94105",
+    "United States"
+  ],
+  "invoiceNo": "{year}-Acme-{mon}",
+  "date": null,
+  "due": null,
+  "currency": "USD",
+  "items": [
+    { "description": "Monthly consulting fee", "quantity": 1, "rate": 5000 }
+  ],
+  "paid": 0,
+  "status": "paid",
+  "showNote": false,
+  "showBank": false,
+  "notes": [
+    "Payments are accepted via bank transfer in USD.\nFeel free to ask any questions via jane@example.com.",
+    "Here are the account details for Jane Doe doing business as Example Studio LLC.\nDomestic transfers use the routing number; international transfers use the Swift code."
+  ],
+  "details": [
+    "**Account holder**: Example Studio LLC",
+    "**Account number**: 0000000000",
+    "**Account type**: Checking",
+    "**Routing number (for wire and ACH)**: 000000000",
+    "**Swift/BIC**: EXAMPLE00",
+    "**Bank name and address**: Example Bank, 400 California St, San Francisco, CA 94104"
+  ],
+  "footer": "**Note**:"
+}

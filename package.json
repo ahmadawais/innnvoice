@@ -1,0 +1,39 @@
+{
+  "name": "innnvoice",
+  "version": "0.1.0",
+  "description": "Beautiful PDF invoices from one JSON file. Zero dependencies. Web editor: https://invoice.awais.dev",
+  "bin": {
+    "innnvoice": "innnvoice"
+  },
+  "files": [
+    "innnvoice",
+    "innnvoice.json",
+    "innnvoice.html"
+  ],
+  "scripts": {
+    "build": "node scripts/build-html.js && ./examples/build.sh",
+    "test": "node --test test/*.test.js",
+    "prepublishOnly": "npm test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "invoice",
+    "invoices",
+    "pdf",
+    "billing",
+    "freelance",
+    "cli",
+    "generator",
+    "zero-dependency"
+  ],
+  "homepage": "https://invoice.awais.dev",
+  "bugs": "https://github.com/ahmadawais/innnvoice/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmadawais/innnvoice.git"
+  },
+  "author": "Ahmad Awais (https://github.com/ahmadawais)",
+  "license": "MIT"
+}

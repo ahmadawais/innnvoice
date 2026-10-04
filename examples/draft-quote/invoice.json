@@ -1,0 +1,17 @@
+{
+  "title": "Estimate",
+  "intro": [
+    "To: **Stark Industries**",
+    "This is a draft estimate for review. Final scope and pricing to be confirmed before work begins."
+  ],
+  "from": ["Byte Forge", "601 Brannan St", "San Francisco, CA 94107"],
+  "to": ["Stark Industries", "1 Embarcadero Center, Suite 2000", "San Francisco, CA 94111"],
+  "invoiceNo": "EST-{year}-{MM}{DD}",
+  "currency": "USD",
+  "items": [
+    { "description": "Discovery workshop (2 days)", "quantity": 2, "rate": 2400 },
+    { "description": "Prototype build", "quantity": 1, "rate": 9000 },
+    { "description": "Usability testing, 5 participants", "quantity": 5, "rate": 350 }
+  ],
+  "status": "draft"
+}

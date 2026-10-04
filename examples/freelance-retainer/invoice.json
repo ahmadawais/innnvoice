@@ -1,0 +1,17 @@
+{
+  "output": "invoices/{year}/{MM}-Acme-{mon}.pdf",
+  "title": "Acme Payment",
+  "intro": [
+    "To: **Acme Corp.**",
+    "By: Jane Doe d/b/a Example Studio LLC",
+    "Services performed pursuant to the Consulting Agreement for {Month} {year}. Payment directed to Example Studio LLC, 548 Market St, San Francisco, CA 94104."
+  ],
+  "from": ["Jane Doe", "(dba Example Studio LLC)", "548 Market St,", "San Francisco, CA 94104"],
+  "to": ["Acme Corp.", "101 Mission St, Suite 100", "San Francisco, CA 94105", "United States"],
+  "invoiceNo": "{year}-ACME-{MM}",
+  "currency": "USD",
+  "items": [
+    { "description": "Monthly consulting retainer, {Month} {year}", "quantity": 1, "rate": 5000 }
+  ],
+  "status": "paid"
+}

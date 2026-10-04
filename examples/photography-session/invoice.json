@@ -1,0 +1,27 @@
+{
+  "title": "Photography Invoice",
+  "intro": [
+    "To: **Priya & Daniel**",
+    "Event: Wedding, 22 Aug {year}",
+    "Full-day coverage, edited gallery and a printed album. A booking deposit was received when the date was reserved."
+  ],
+  "from": ["Golden Gate Light Photography", "1890 Haight St", "San Francisco, CA 94117", "United States"],
+  "to": ["Priya Shah & Daniel Lee", "2550 Lombard St", "San Francisco, CA 94123", "United States"],
+  "invoiceNo": "GGL-{year}-{MM}-19",
+  "due": "2026-09-21",
+  "currency": "USD",
+  "items": [
+    { "description": "Full-day wedding coverage (10 hours)", "quantity": 1, "rate": 3800 },
+    { "description": "Second shooter", "quantity": 8, "rate": 75 },
+    { "description": "Printed album, 40 pages", "quantity": 1, "rate": 650 },
+    { "description": "Extra prints, 8x10", "quantity": 12, "rate": 15 }
+  ],
+  "paid": 1300,
+  "status": "unpaid",
+  "statusColors": { "unpaid": "#d97706" },
+  "showNote": true,
+  "notes": [
+    "Thank you for letting us be part of your day!\nYour online gallery link will be emailed once the balance is settled."
+  ],
+  "footer": "**Payment**: Zelle to pay@goldengatelight.example"
+}

@@ -1,0 +1,498 @@
+#!/usr/bin/env node
+// innnvoice — zero-dependency invoice PDF generator.
+// Reads innnvoice.json (the template) and writes an A4 PDF.
+//
+//   innnvoice                    → paid invoice dated the 1st of the current month
+//   innnvoice 2026-09            → paid invoice dated 01 Sep 2026
+//   innnvoice 2026-09 --due      → red, marked Due
+//   innnvoice --help
+
+const fs = require('node:fs');
+const path = require('node:path');
+const zlib = require('node:zlib');
+const { parseArgs } = require('node:util');
+
+const HELP = `innnvoice — generate a PDF invoice from innnvoice.json
+
+Usage: innnvoice [YYYY-MM | YYYY-MM-DD] [options]
+       innnvoice init           Create a starter innnvoice.json in this folder
+       innnvoice html           Create innnvoice.html, a fill-in-the-form editor
+
+Status (default: paid):
+      --paid               Paid (green), paid to date = total, balance 0.00
+      --due                Due (red)
+      --unpaid             Unpaid (red)
+      --draft              Draft (grey), saved as *-DRAFT.pdf
+
+Options:
+  -t, --template <file>    Template JSON (default: ./innnvoice.json)
+  -d, --date <date>        Invoice date, YYYY-MM-DD (default: 1st of current month)
+      --due-date <date>    Due date, YYYY-MM-DD (default: same as invoice date)
+  -a, --amount <n>         Override the rate of the first line item
+      --paid-amount <n>    Amount paid to date (default: template "paid")
+  -o, --out <file>         Output path (default: template "output")
+  -f, --force              Overwrite an existing PDF
+      --note               Include the Invoice Note and footer note (hidden by default)
+      --bank               Include the payment/bank details (hidden by default)
+      --open               Open the PDF when done
+  -h, --help               Show this help
+
+Placeholders in template strings: {year} {mon} {Month} {month} {MM} {DD}
+Use **double asterisks** for bold text.`;
+
+const { values: opts, positionals } = parseArgs({
+	allowPositionals: true,
+	options: {
+		template: { type: 'string', short: 't', default: 'innnvoice.json' },
+		date: { type: 'string', short: 'd' },
+		'due-date': { type: 'string' },
+		amount: { type: 'string', short: 'a' },
+		'paid-amount': { type: 'string' },
+		paid: { type: 'boolean' },
+		unpaid: { type: 'boolean' },
+		due: { type: 'boolean' },
+		draft: { type: 'boolean' },
+		out: { type: 'string', short: 'o' },
+		force: { type: 'boolean', short: 'f' },
+		note: { type: 'boolean' },
+		bank: { type: 'boolean' },
+		open: { type: 'boolean' },
+		help: { type: 'boolean', short: 'h' },
+	},
+});
+
+// <core> Pure rendering: template JSON in, PDF bytes out. No Node APIs, so
+// scripts/build-html.js can copy this block verbatim into innnvoice.html.
+
+function renderInvoice(tpl, opts = {}) {
+	const fail = msg => {
+		throw new Error(msg);
+	};
+
+	// ─── Dates ───────────────────────────────────────────────────────────────────
+
+	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+	function parseDate(str) {
+		const m = /^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/.exec(String(str).trim());
+		if (!m) fail(`Invalid date "${str}". Use YYYY-MM or YYYY-MM-DD.`);
+		const d = { year: +m[1], month: +m[2], day: m[3] ? +m[3] : 1 };
+		if (d.month < 1 || d.month > 12 || d.day < 1 || d.day > 31) fail(`Invalid date "${str}".`);
+		return d;
+	}
+
+	const pad = n => String(n).padStart(2, '0');
+	const fmtDate = d => `${pad(d.day)} ${MONTHS[d.month - 1]} ${d.year}`;
+
+	// ─── Template ────────────────────────────────────────────────────────────────
+
+	const now = opts.now ?? new Date();
+	const dateArg = opts.date ?? tpl.date;
+	const date = dateArg ? parseDate(dateArg) : { year: now.getFullYear(), month: now.getMonth() + 1, day: 1 };
+	const dueArg = opts.dueDate ?? tpl.due;
+	const due = dueArg ? parseDate(dueArg) : date;
+
+	const vars = {
+		year: date.year,
+		mon: MONTHS[date.month - 1],
+		Month: MONTHS_LONG[date.month - 1],
+		month: date.month,
+		MM: pad(date.month),
+		DD: pad(date.day),
+	};
+	const fill = str => String(str ?? '').replace(/\{(\w+)\}/g, (all, key) => (key in vars ? vars[key] : all));
+
+	// Status: option > template "status" > paid.
+	const STATUSES = {
+		paid: { label: 'Paid', color: '#5a9f7d' },
+		due: { label: 'Due', color: '#d35c5c' },
+		unpaid: { label: 'Unpaid', color: '#d35c5c' },
+		draft: { label: 'Draft', color: '#a3a3a3' },
+	};
+	for (const [key, color] of Object.entries(tpl.statusColors ?? {})) if (STATUSES[key]) STATUSES[key].color = color;
+	const status = opts.status ?? tpl.status ?? 'paid';
+	if (!STATUSES[status]) fail(`Unknown status "${status}". Use paid, due, unpaid or draft.`);
+	const { label: statusLabel, color: statusColor } = STATUSES[status];
+
+	const currency = tpl.currency ?? 'USD';
+	const items = (tpl.items ?? []).map(item => ({ ...item, quantity: Number(item.quantity ?? 1), rate: Number(item.rate ?? 0) }));
+	if (!items.length) fail('Template has no "items".');
+	if (opts.amount !== undefined && opts.amount !== '') items[0].rate = Number(opts.amount);
+	for (const item of items) {
+		if (!Number.isFinite(item.rate) || !Number.isFinite(item.quantity)) fail('Item quantity/rate must be numbers.');
+	}
+
+	const cents = n => Math.round(n * 100) / 100;
+	const subTotal = cents(items.reduce((sum, item) => sum + cents(item.quantity * item.rate), 0));
+	// A paid invoice is paid in full unless paidAmount says otherwise.
+	const paidAmount = cents(Number(opts.paidAmount ?? (status === 'paid' ? subTotal : (tpl.paid ?? 0))));
+	if (!Number.isFinite(paidAmount)) fail('Paid amount must be a number.');
+	const balance = cents(subTotal - paidAmount);
+
+	const plain = n => n.toFixed(2);
+	const money = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	const invoiceNo = fill(tpl.invoiceNo ?? `${vars.year}-${vars.MM}`);
+
+	// ─── Fonts (Helvetica / Helvetica-Bold AFM widths, chars 32–126) ─────────────
+
+	const WIDTHS = {
+		F1: [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584],
+		F2: [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584],
+	};
+
+	// Map to WinAnsi-safe text; anything else becomes "?".
+	const clean = str =>
+		String(str)
+			.replace(/[‘’]/g, "'")
+			.replace(/[“”]/g, '"')
+			.replace(/[–—]/g, '-')
+			.replace(/…/g, '...')
+			.replace(/[^\n\x20-\x7e\xa0-\xff]/g, '?');
+
+	const textWidth = (str, font, size, tracking = 0) =>
+		[...str].reduce((w, ch) => w + (WIDTHS[font][ch.charCodeAt(0) - 32] ?? 556), 0) * (size / 1000) +
+		tracking * Math.max(str.length - 1, 0);
+
+	// ─── Drawing (top-down layout units, scaled onto A4) ─────────────────────────
+
+	const PAGE_W = 595.28;
+	const PAGE_H = 841.89;
+	const MARGIN = 36; // points
+	const S = (PAGE_W - MARGIN * 2) / 1752; // layout units → points
+	const ops = [];
+	const warnings = [];
+	const num = n => (Math.round(n * 1000) / 1000).toString();
+
+	function rgb(hex) {
+		const h = String(hex).replace('#', '');
+		const full = h.length === 3 ? [...h].map(c => c + c).join('') : h;
+		const v = parseInt(full, 16);
+		if (Number.isNaN(v)) return '0 0 0';
+		return [(v >> 16) & 255, (v >> 8) & 255, v & 255].map(c => num(c / 255)).join(' ');
+	}
+
+	const escape = str => str.replace(/[\\()]/g, m => `\\${m}`);
+
+	function text(x, y, str, { font = 'F1', size = FS, color = INK, align = 'left', tracking = 0 } = {}) {
+		str = clean(str);
+		const w = textWidth(str, font, size, tracking);
+		if (align === 'right') x -= w;
+		if (align === 'center') x -= w / 2;
+		ops.push(`BT ${rgb(color)} rg /${font} ${num(size)} Tf ${num(tracking)} Tc 1 0 0 -1 ${num(x)} ${num(y)} Tm (${escape(str)}) Tj ET`);
+		return w;
+	}
+
+	const rect = (x, y, w, h, color) => ops.push(`${rgb(color)} rg ${num(x)} ${num(y)} ${num(w)} ${num(h)} re f`);
+
+	function roundRect(x, y, w, h, r, color) {
+		const k = r * 0.5523;
+		ops.push(
+			`${rgb(color)} rg`,
+			`${num(x + r)} ${num(y)} m ${num(x + w - r)} ${num(y)} l`,
+			`${num(x + w - r + k)} ${num(y)} ${num(x + w)} ${num(y + r - k)} ${num(x + w)} ${num(y + r)} c`,
+			`${num(x + w)} ${num(y + h - r)} l`,
+			`${num(x + w)} ${num(y + h - r + k)} ${num(x + w - r + k)} ${num(y + h)} ${num(x + w - r)} ${num(y + h)} c`,
+			`${num(x + r)} ${num(y + h)} l`,
+			`${num(x + r - k)} ${num(y + h)} ${num(x)} ${num(y + h - r + k)} ${num(x)} ${num(y + h - r)} c`,
+			`${num(x)} ${num(y + r)} l`,
+			`${num(x)} ${num(y + r - k)} ${num(x + r - k)} ${num(y)} ${num(x + r)} ${num(y)} c h f`,
+		);
+	}
+
+	// "Plain **bold** plain" → lines of runs, word-wrapped to maxWidth.
+	function wrapRich(str, { size = FS, maxWidth = Infinity } = {}) {
+		const lines = [];
+		for (const para of clean(str).split('\n')) {
+			const tokens = [];
+			para.split('**').forEach((seg, i) => {
+				const f = i % 2 ? 'F2' : 'F1';
+				for (const t of seg.split(/(\s+)/)) if (t) tokens.push({ t, f });
+			});
+
+			let line = [];
+			let w = 0;
+			for (const tok of tokens) {
+				const space = /^\s+$/.test(tok.t);
+				const tw = textWidth(tok.t, tok.f, size);
+				if (space && !line.length) continue;
+				if (!space && line.length && w + tw > maxWidth) {
+					while (line.length && /^\s+$/.test(line.at(-1).t)) line.pop();
+					lines.push(line);
+					line = [];
+					w = 0;
+				}
+				line.push(tok);
+				w += tw;
+			}
+			lines.push(line);
+		}
+		return lines;
+	}
+
+	// Draws rich text with its first baseline at y; returns the last baseline.
+	function rich(x, y, str, { size = FS, maxWidth = CW, lineHeight = LH, color = INK } = {}) {
+		const lines = wrapRich(fill(str), { size, maxWidth });
+		lines.forEach((line, i) => {
+			let cx = x;
+			for (const run of line) cx += text(cx, y + i * lineHeight, run.t, { font: run.f, size, color });
+		});
+		return y + (lines.length - 1) * lineHeight;
+	}
+
+	// ─── Layout ──────────────────────────────────────────────────────────────────
+
+	const FS = 28; // body font size
+	const LH = 39; // body line height
+	const L = 0;
+	const R = 1752;
+	const CW = R - L;
+	const COL2 = CW / 2; // right column of the header block
+	const TOT = CW / 4; // totals column
+	const INK = '#333333';
+	const MUTED = '#8c8c8c';
+	const LINE = '#e3e3e3';
+
+	ops.push(`q ${num(S)} 0 0 ${num(-S)} ${num(MARGIN)} ${num(PAGE_H - MARGIN)} cm`);
+
+	// Header: status badge + title
+	const badge = { x: L, y: 0, h: 70 };
+	const badgeSize = 38;
+	badge.w = textWidth(statusLabel, 'F1', badgeSize) + 44;
+	roundRect(badge.x, badge.y, badge.w, badge.h, 4, statusColor);
+	text(badge.x + badge.w / 2, badge.y + badge.h / 2 + badgeSize * 0.36, statusLabel, { size: badgeSize, color: '#ffffff', align: 'center' });
+	text(badge.x + badge.w + 31, badge.y + badge.h / 2 + 42 * 0.36, fill(tpl.title ?? 'Invoice'), { font: 'F2', size: 42 });
+
+	// Intro: "Key: value" labels muted, statement wrapped to the golden 61.8% measure.
+	let y = 138 - LH;
+	for (const line of tpl.intro ?? []) {
+		const m = /^([A-Za-z][A-Za-z .]{0,15}):\s+(.+)$/.exec(fill(line));
+		if (m) {
+			y += LH;
+			const w = text(L, y, `${m[1]}: `, { color: MUTED });
+			rich(L + w, y, m[2]);
+		} else y = rich(L, y + LH, line, { maxWidth: CW * 0.618 });
+	}
+
+	// From / To (left) and invoice meta (right)
+	const top = y + 131;
+	text(L, top, 'From', { font: 'F2' });
+	let ly = top + 59 - LH;
+	for (const line of tpl.from ?? []) ly = rich(L, ly + LH, line, { maxWidth: COL2 - 40 });
+	ly += 70;
+	text(L, ly, 'To', { font: 'F2' });
+	ly += 59 - LH;
+	for (const line of tpl.to ?? []) ly = rich(L, ly + LH, line, { maxWidth: COL2 - 40 });
+
+	let ry = top - 2;
+	for (const [label, value] of [
+		['Invoice No.', `# ${invoiceNo}`],
+		['Date', fmtDate(date)],
+		['Invoice Due', fmtDate(due)],
+	]) {
+		text(COL2, ry, label, { font: 'F2' });
+		text(COL2, ry + 55, value);
+		ry += 55 + 84;
+	}
+	ry -= 84;
+
+	// Line items. Quantity/rate are left blank for a single unit, as in the original.
+	const QTY = 1282;
+	const RATE = 1471;
+	y = Math.max(ly, ry) + 120;
+	text(L, y, 'Description', { font: 'F2', color: MUTED });
+	text(QTY, y, 'Quantity', { font: 'F2', color: MUTED, align: 'right' });
+	text(RATE, y, 'Rate', { font: 'F2', color: MUTED, align: 'right' });
+	text(R, y, 'Amount', { font: 'F2', color: MUTED, align: 'right' });
+	let lineY = y + 22;
+	rect(L, lineY, CW, 4, LINE);
+	lineY += 4;
+
+	for (const item of items) {
+		const base = lineY + 47;
+		const last = rich(L, base, item.description ?? '', { maxWidth: QTY - L - 200 });
+		if (item.quantity !== 1) {
+			text(QTY, base, String(item.quantity), { align: 'right' });
+			text(RATE, base, plain(item.rate), { align: 'right' });
+		}
+		text(R, base, `${currency} ${plain(cents(item.quantity * item.rate))}`, { align: 'right' });
+		lineY = last + 61;
+		rect(L, lineY, CW, 2, LINE);
+	}
+
+	// Totals
+	const totals = [
+		['Sub Total', money(subTotal), 'F1'],
+		[`Total (${currency})`, money(subTotal), 'F2'],
+		[`Paid to Date (${currency})`, money(paidAmount), 'F2'],
+	];
+	totals.forEach(([label, value, font], i) => {
+		const base = lineY + 59;
+		text(TOT + 14, base, label, { font });
+		text(R - 14, base, value, { font, align: 'right' });
+		lineY = base + 41;
+		if (i < totals.length - 1) rect(TOT, lineY, R - TOT, 2, LINE);
+	});
+
+	// Balance bar: coloured label cell + bordered value cell
+	const box = { x: TOT, y: lineY + 2, w: R - TOT, h: 100, cell: 164, border: 4 };
+	roundRect(box.x, box.y, box.w, box.h, 5, statusColor);
+	rect(box.x + box.cell, box.y + box.border, box.w - box.cell - box.border, box.h - box.border * 2, '#ffffff');
+	const boxBase = box.y + box.h / 2 + FS * 0.36;
+	text(box.x + box.cell / 2, boxBase, 'Balance', { color: '#ffffff', align: 'center' });
+	text(box.x + box.cell + 16, boxBase, currency, { font: 'F2' });
+	text(R - 22, boxBase, money(balance), { font: 'F2', align: 'right' });
+	y = box.y + box.h;
+
+	// Notes (opt-in: --note or "showNote": true)
+	const showNote = opts.note ?? tpl.showNote ?? false;
+	if (showNote && tpl.notes?.length) {
+		text(L, (y += 90), 'Invoice Note', { font: 'F2' });
+		y += 100 - 64;
+		for (const para of tpl.notes) y = rich(L, y + 64, para);
+	}
+
+	// Payment details (opt-in: --bank or "showBank": true)
+	const showBank = opts.bank ?? tpl.showBank ?? false;
+	if (showBank && tpl.details?.length) {
+		rect(L, (y += 60), CW, 2, LINE);
+		y += 82 - 64;
+		for (const line of tpl.details) y = rich(L, y + 64, line);
+		rect(L, (y += 60), CW, 2, LINE);
+		y += 22;
+	}
+
+	if (showNote && tpl.footer) y = rich(L, y + 60, tpl.footer);
+
+	ops.push('Q');
+	if (y * S > PAGE_H - MARGIN * 2) warnings.push('Content runs past the bottom of the page; shorten the template.');
+
+	// ─── PDF serialization ───────────────────────────────────────────────────────
+
+	const bytes = str => Uint8Array.from(str, ch => ch.charCodeAt(0) & 255);
+	const concat = chunks => {
+		const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+		let at = 0;
+		for (const c of chunks) {
+			out.set(c, at);
+			at += c.length;
+		}
+		return out;
+	};
+
+	function buildPdf(content, info) {
+		const raw = bytes(content);
+		const stream = opts.deflate ? new Uint8Array(opts.deflate(raw)) : raw;
+		const filter = opts.deflate ? ' /Filter /FlateDecode' : '';
+		const pdfString = s => `(${escape(clean(s))})`;
+		const objects = [
+			'<< /Type /Catalog /Pages 2 0 R >>',
+			'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+			`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>`,
+			'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+			'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+			[bytes(`<< /Length ${stream.length}${filter} >>\nstream\n`), stream, bytes('\nendstream')],
+			`<< /Title ${pdfString(info.title)} /Author ${pdfString(info.author)} /Producer (innnvoice) /CreationDate (D:${info.created}) >>`,
+		];
+
+		const parts = [bytes('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')];
+		let offset = parts[0].length;
+		const offsets = [];
+		objects.forEach((body, i) => {
+			const chunk = concat([bytes(`${i + 1} 0 obj\n`), ...(Array.isArray(body) ? body : [bytes(body)]), bytes('\nendobj\n')]);
+			offsets.push(offset);
+			parts.push(chunk);
+			offset += chunk.length;
+		});
+
+		const xref = [
+			`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`,
+			...offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`),
+			`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 7 0 R >>\nstartxref\n${offset}\n%%EOF\n`,
+		].join('');
+		parts.push(bytes(xref));
+		return concat(parts);
+	}
+
+	const pdf = buildPdf(ops.join('\n'), {
+		title: invoiceNo || fill(tpl.title),
+		author: tpl.from?.[0] ?? '',
+		created: now.toISOString().replace(/[-:T]/g, '').slice(0, 14),
+	});
+
+	let output = fill(tpl.output ?? 'invoice-{year}-{MM}.pdf');
+	if (status === 'draft') output = output.replace(/(\.pdf)?$/i, '-DRAFT.pdf');
+
+	return { pdf, output, invoiceNo, status, currency, date: fmtDate(date), balance: money(balance), warnings };
+}
+
+// </core>
+
+// ─── CLI ─────────────────────────────────────────────────────────────────────
+
+if (opts.help) {
+	console.log(HELP);
+	process.exit(0);
+}
+
+const fail = msg => {
+	console.error(`✗ ${msg}`);
+	process.exit(1);
+};
+
+// `innnvoice init` copies the bundled starter template into the current folder.
+if (positionals[0] === 'init') {
+	const dest = path.resolve(opts.template);
+	if (fs.existsSync(dest) && !opts.force) fail(`${dest} already exists. Pass --force to overwrite.`);
+	fs.copyFileSync(path.join(__dirname, 'innnvoice.json'), dest);
+	console.log(`✓ Created ${dest}\n  Add your details, then run: innnvoice`);
+	process.exit(0);
+}
+
+// `innnvoice html` copies the browser editor into the current folder.
+if (positionals[0] === 'html') {
+	const dest = path.resolve(opts.out ?? 'innnvoice.html');
+	if (fs.existsSync(dest) && !opts.force) fail(`${dest} already exists. Pass --force to overwrite.`);
+	fs.copyFileSync(path.join(__dirname, 'innnvoice.html'), dest);
+	console.log(`✓ Created ${dest}\n  Open it in a browser to fill in and download invoices.`);
+	if (opts.open) require('node:child_process').spawn('open', [dest], { stdio: 'ignore', detached: true }).unref();
+	process.exit(0);
+}
+
+const templatePath = path.resolve(opts.template);
+if (!fs.existsSync(templatePath)) fail(`Template not found: ${templatePath}\n  Run \`innnvoice init\` to create one.`);
+let tpl;
+try {
+	tpl = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+} catch (err) {
+	fail(`Could not parse ${templatePath}: ${err.message}`);
+}
+
+const flagged = ['paid', 'due', 'unpaid', 'draft'].filter(key => opts[key]);
+if (flagged.length > 1) fail(`Pick one status, got: ${flagged.map(key => `--${key}`).join(' ')}`);
+
+let result;
+try {
+	result = renderInvoice(tpl, {
+		date: opts.date ?? positionals[0],
+		dueDate: opts['due-date'],
+		status: flagged[0],
+		amount: opts.amount,
+		paidAmount: opts['paid-amount'],
+		note: opts.note,
+		bank: opts.bank,
+		deflate: zlib.deflateSync,
+	});
+} catch (err) {
+	fail(err.message);
+}
+for (const warning of result.warnings) console.warn(`! ${warning}`);
+
+let outPath = opts.out ? path.resolve(opts.out) : path.resolve(path.dirname(templatePath), result.output);
+if (fs.existsSync(outPath) && !opts.force) fail(`${outPath} already exists. Pass --force to overwrite.`);
+fs.mkdirSync(path.dirname(outPath), { recursive: true });
+fs.writeFileSync(outPath, result.pdf);
+
+console.log(`✓ ${result.invoiceNo} · ${result.date} · ${result.currency} ${result.balance} · ${result.status.toUpperCase()}`);
+console.log(`  ${outPath}`);
+if (opts.open) require('node:child_process').spawn('open', [outPath], { stdio: 'ignore', detached: true }).unref();

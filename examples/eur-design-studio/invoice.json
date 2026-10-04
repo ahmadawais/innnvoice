@@ -1,0 +1,25 @@
+{
+  "title": "Rechnung / Invoice",
+  "intro": [
+    "To: **Müller & Söhne GmbH**",
+    "Project: US launch",
+    "Brand identity and packaging design for the Café Müller US launch, billed in EUR per the agreement."
+  ],
+  "from": ["Studio Blau", "340 Hayes St", "San Francisco, CA 94102", "United States"],
+  "to": ["Müller & Söhne GmbH", "US Office", "235 Montgomery St", "San Francisco, CA 94104"],
+  "invoiceNo": "SB-{year}-{MM}-07",
+  "currency": "EUR",
+  "items": [
+    { "description": "Logo and wordmark", "quantity": 1, "rate": 4200 },
+    { "description": "Packaging design, per SKU", "quantity": 6, "rate": 650 },
+    { "description": "Brand guidelines (PDF)", "quantity": 1, "rate": 1800 }
+  ],
+  "status": "paid",
+  "statusColors": { "paid": "#2563eb", "due": "#ea580c" },
+  "showBank": true,
+  "details": [
+    "**Account holder**: Studio Blau",
+    "**IBAN**: DE00 0000 0000 0000 0000 00",
+    "**BIC**: EXAMPLEXXX"
+  ]
+}

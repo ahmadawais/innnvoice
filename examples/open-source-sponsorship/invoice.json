@@ -1,0 +1,19 @@
+{
+  "title": "Sponsorship",
+  "intro": [
+    "To: **Hooli**",
+    "Program: Open Source Maintainer Sponsorship",
+    "Thank you for funding open source. This sponsorship supports ongoing maintenance, security fixes and releases for the projects below."
+  ],
+  "from": ["Ada Maintainer", "github.com/ada-example"],
+  "to": ["Hooli Inc.", "Open Source Program Office", "500 Folsom St", "San Francisco, CA 94105"],
+  "invoiceNo": "OSS-{year}-Q3",
+  "currency": "GBP",
+  "items": [
+    { "description": "Gold sponsor tier, {Month} {year}", "quantity": 1, "rate": 2000 },
+    { "description": "Logo placement in README (3 repos)", "quantity": 3, "rate": 250 },
+    { "description": "Priority issue triage", "quantity": 1, "rate": 500 }
+  ],
+  "status": "paid",
+  "statusColors": { "paid": "#7c3aed" }
+}

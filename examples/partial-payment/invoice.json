@@ -1,0 +1,19 @@
+{
+  "title": "Deposit Received",
+  "intro": [
+    "To: **Umbrella Health**",
+    "Re: Mobile app MVP",
+    "A 40% deposit was received on signing. The remaining balance is due on delivery."
+  ],
+  "from": ["Northwind Labs", "888 Brannan St", "San Francisco, CA 94103"],
+  "to": ["Umbrella Health Inc.", "1700 Owens St", "San Francisco, CA 94158"],
+  "invoiceNo": "NW-{year}-117",
+  "due": "2026-09-15",
+  "currency": "USD",
+  "items": [
+    { "description": "iOS + Android MVP (fixed bid)", "quantity": 1, "rate": 24000 },
+    { "description": "Push notification service setup", "quantity": 1, "rate": 1500 }
+  ],
+  "paid": 10200,
+  "status": "due"
+}

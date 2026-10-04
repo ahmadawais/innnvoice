@@ -1,0 +1,32 @@
+{
+  "title": "Project Invoice",
+  "intro": [
+    "To: **Globex Corporation**",
+    "Project: Marketing site redesign",
+    "Milestone 2 of 3: design system, page templates and CMS integration, as agreed in the Statement of Work dated 12 Aug {year}."
+  ],
+  "from": ["Pixel & Pine Studio", "2180 Bryant St", "San Francisco, CA 94110", "hello@pixelpine.example"],
+  "to": ["Globex Corporation", "Attn: Hank Scorpio", "350 Townsend St, Floor 4", "San Francisco, CA 94107"],
+  "invoiceNo": "PP-{year}{MM}-042",
+  "due": "2026-10-01",
+  "currency": "USD",
+  "items": [
+    { "description": "**Design system** - tokens, components, Figma library", "quantity": 1, "rate": 8500 },
+    { "description": "Page templates (home, pricing, blog, docs)", "quantity": 4, "rate": 1200 },
+    { "description": "Headless CMS integration and content migration", "quantity": 1, "rate": 3200 },
+    { "description": "Senior engineering hours", "quantity": 18, "rate": 150 }
+  ],
+  "status": "due",
+  "showNote": true,
+  "showBank": true,
+  "notes": [
+    "Thank you for your business. Payment is due within 30 days.\nQuestions? Email billing@pixelpine.example."
+  ],
+  "details": [
+    "**Account holder**: Pixel & Pine Studio LLC",
+    "**Account number**: 0000000000",
+    "**Routing number (ACH)**: 000000000",
+    "**Bank**: Example Bank, 400 California St, San Francisco, CA 94104"
+  ],
+  "footer": "**Late fee**: 1.5% per month on balances over 30 days."
+}

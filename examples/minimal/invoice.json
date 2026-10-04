@@ -1,0 +1,9 @@
+{
+  "title": "Invoice",
+  "from": ["Jane Doe", "jane@example.com"],
+  "to": ["Acme Corp."],
+  "currency": "USD",
+  "items": [
+    { "description": "Website maintenance", "quantity": 1, "rate": 750 }
+  ]
+}
