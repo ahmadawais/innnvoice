@@ -1,6 +1,6 @@
 {
   "name": "innnvoice",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "Beautiful PDF invoices from one JSON file. Zero dependencies. Web editor: https://invoice.awais.dev",
   "bin": {
     "innnvoice": "innnvoice"
